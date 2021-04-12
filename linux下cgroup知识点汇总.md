@@ -282,7 +282,130 @@ $ echo 100000 > ych_cpu/cpu.cfs_period_us
 $ echo 10000 > ych_cpu/cpu.cfs_quota_us
 ```
 
-运行 cgexec -g cpu:ych_cpu ./cputime
+测试代码:
+```
+#define _GNU_SOURCE			/* See feature_test_macros(7) */
+#include <sched.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <signal.h>
+#include <unistd.h>
+#include <sys/prctl.h>
+#include <sys/mman.h>
+#include <errno.h>
+#include <string.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/resource.h>
+
+#define YCH_LOG(fmt, arg...)                                  \
+do                                                            \
+{                                                             \
+    printf("[%d]ych:%s(%d) "fmt"\r\n", getpid(), __FUNCTION__, __LINE__, ##arg);  \
+}                                                             \
+while((0))
+
+void bind_cpus(int cpu)
+{
+	int i;
+
+	cpu_set_t cpu_affinity;
+
+	CPU_ZERO(&cpu_affinity);
+	CPU_SET(cpu, &cpu_affinity);
+
+	for (i = 0; i < CPU_SETSIZE; i++) {
+		if (CPU_ISSET(i, &cpu_affinity)) {
+			YCH_LOG("cpuset_setaffinity(): using cpu #%u", i);
+		}
+	}
+	if (sched_setaffinity(getpid(), sizeof(cpu_set_t), &cpu_affinity) == -1) {
+		YCH_LOG("sched_setaffinity() failed");
+	}
+}
+
+int main(int argc, char **argv)
+{
+	int index;
+	int cpu = 0;
+	int pri = 0;
+	
+	for (index = 0; index < argc; index++) {
+		YCH_LOG("argv[%d]:%s", index, argv[index]);
+	}
+
+	if (argc < 3) {
+		YCH_LOG("input para err:%d", argc);
+		return 0;
+	}
+		
+	if (argc >= 2)
+		cpu = atoi(argv[1]);
+	
+	if (argc >= 3)
+		pri = atoi(argv[2]);
+	
+	setpriority(PRIO_PROCESS, 0, pri);
+	
+	bind_cpus(cpu);
+	
+	while (1) {
+		;
+	}
+	return 0;
+}
+```
+
+1. 指定cgroup启动
+cgexec -g cpu:ych_cpu ./out 1 -19 &
+2. 默认启动
+./out 1 -19 &
+
+```
+Threads: 540 total,   3 running, 537 sleeping,   0 stopped,   0 zombie
+%Cpu(s): 47.3 us,  1.0 sy,  0.0 ni, 49.1 id,  0.0 wa,  1.2 hi,  0.5 si,  1.0 st
+MiB Mem :   1829.4 total,    677.5 free,    373.2 used,    778.7 buff/cache
+MiB Swap:   2116.0 total,   1847.3 free,    268.7 used.   1204.5 avail Mem
+
+  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ P COMMAND
+29120 root       1 -19    4328    804    740 R  94.7   0.0   4:44.87 1 out
+29171 root       1 -19    4328    692    632 R   0.7   0.0   0:00.02 1 out
+```
+两个都是死循环的进程，在同一个core，nice都是-19, 一个使用根目录cgroup 优先级远大于 子目录cgroup的程序
+```
+[root@dynamic-005-005-005-002 ych]# cat /proc/29120/cgroup
+12:freezer:/
+11:cpuset:/
+10:perf_event:/
+9:blkio:/user.slice
+8:devices:/user.slice
+7:hugetlb:/
+6:pids:/user.slice/user-1000.slice/session-2.scope
+5:rdma:/
+4:cpu,cpuacct:/
+3:net_cls,net_prio:/
+2:memory:/user.slice/user-1000.slice/session-2.scope
+1:name=systemd:/user.slice/user-1000.slice/session-2.scope
+[root@dynamic-005-005-005-002 ych]# cat /proc/29171/cgroup
+12:freezer:/
+11:cpuset:/
+10:perf_event:/
+9:blkio:/user.slice
+8:devices:/user.slice
+7:hugetlb:/
+6:pids:/user.slice/user-1000.slice/session-2.scope
+5:rdma:/
+4:cpu,cpuacct:/ych_cpu
+3:net_cls,net_prio:/
+2:memory:/user.slice/user-1000.slice/session-2.scope
+1:name=systemd:/user.slice/user-1000.slice/session-2.scope
+```
 
 ### 注意 
 使用cgroup限制CPU的使用率比较纠结，用cfs_period_us & cfs_quota_us吧，
