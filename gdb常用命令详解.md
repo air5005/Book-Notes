@@ -27,6 +27,8 @@ x /10xg addr
 echo 'p malloc_stats_print(0,0,0)' | gdb --quiet -nx -p 24555
 
 # 设置gdb的coredump_filter
+https://man7.org/linux/man-pages/man5/core.5.html
+
 /proc/[pid]/coredump_filter file can be used to control which
        memory segments are written to the core dump file in the event
        that a core dump is performed for the process with the
