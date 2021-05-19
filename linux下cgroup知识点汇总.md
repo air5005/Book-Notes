@@ -364,6 +364,17 @@ int main(int argc, char **argv)
 
 1. 指定cgroup启动
 cgexec -g cpu:ych_cpu ./out 1 -19 &
+
+```
+使用cgexec加LD_PRELOAD需要这么做:
+
+# 没有cgexec时:
+LD_PRELOAD=/usr/lib64/libtcmalloc.so.4 ./test_preload.sh "a b" "c"
+
+# 使用cgexec时:
+cgexec sh -c 'LD_PRELOAD=/usr/lib64/libtcmalloc.so.4 ./test_preload.sh "a b" "c"'
+```
+
 2. 默认启动
 ./out 1 -19 &
 
